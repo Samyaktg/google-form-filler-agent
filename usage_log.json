@@ -1,0 +1,37 @@
+[
+  {
+    "timestamp": 1744487029.489315,
+    "user_id_hash": "e95f6917",
+    "form_url_hash": "3ab43679",
+    "responses_requested": 15,
+    "responses_successful": 0
+  },
+  {
+    "timestamp": 1744488151.109908,
+    "user_id_hash": "e95f6917",
+    "form_url_hash": "3ab43679",
+    "responses_requested": 3,
+    "responses_successful": 0
+  },
+  {
+    "timestamp": 1744488663.546833,
+    "user_id_hash": "e95f6917",
+    "form_url_hash": "3ab43679",
+    "responses_requested": 3,
+    "responses_successful": 0
+  },
+  {
+    "timestamp": 1744514432.619926,
+    "user_id_hash": "e95f6917",
+    "form_url_hash": "3ab43679",
+    "responses_requested": 3,
+    "responses_successful": 0
+  },
+  {
+    "timestamp": 1744514932.643105,
+    "user_id_hash": "e95f6917",
+    "form_url_hash": "3ab43679",
+    "responses_requested": 3,
+    "responses_successful": 3
+  }
+]
