@@ -11,7 +11,7 @@ USER_DB_PATH = "user_database.json"
 USAGE_LOG_PATH = "usage_log.json"
 
 # API keys
-GEMINI_API_KEY = "AIzaSyCC93mbMLR_mjh0N6yX33LA8Oy9XKoMnGE"  # Replace with environment variable in production
+GEMINI_API_KEY = "GEMINI_API_KEY"  # Replace with environment variable in production
 
 # Form generation settings
 AGE_GROUPS = [
