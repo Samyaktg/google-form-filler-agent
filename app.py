@@ -129,9 +129,9 @@ if st.button("Generate and Submit Responses", disabled=remaining_submissions <= 
         update_log(f"Starting to process {form_url}")
         update_log(f"Preparing to generate {num_responses} responses")
         
-        # Setup WebDriver
-        update_log("Setting up WebDriver...")
-        driver = setup_driver()
+        # Setup WebDriver for Streamlit environment
+        update_log("Setting up WebDriver for Streamlit environment...")
+        driver = setup_driver("chrome")  # Explicitly request Chrome
         
         if driver:
             try:

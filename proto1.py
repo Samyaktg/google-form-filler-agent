@@ -7,28 +7,26 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.keys import Keys
-# --- Start Edge WebDriver Imports ---
+# --- Updated WebDriver Imports ---
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from webdriver_manager.chrome import ChromeDriverManager
+# Keep Edge imports as fallback
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from selenium.webdriver.edge.service import Service as EdgeService
 from selenium.webdriver.edge.options import Options as EdgeOptions
-# --- End Edge WebDriver Imports ---
+# --- End WebDriver Imports ---
 
 import google.generativeai as genai
 from bs4 import BeautifulSoup # Using BS4 alongside Selenium for easier parsing sometimes
 
 # --- Configuration ---
-# IMPORTANT: Set your Gemini API Key securely. Using environment variables is recommended.
-# Example: Set an environment variable named GOOGLE_API_KEY with your key.
-# If you don't use environment variables, replace os.getenv("GOOGLE_API_KEY")
-# with your actual API key string (e.g., "YOUR_API_KEY_HERE").
-# Be cautious about committing keys directly into version control.
-
-# --- Corrected API Key Retrieval ---
-# Retrieve the API key from the environment variable named "GOOGLE_API_KEY"
-API_KEY = "GEMINI_API_KEY"
-
-# If you are not using environment variables and want to hardcode the key (less secure):
-# API_KEY = "YOUR_AIzaSyCC93mbMLR_mjh0N6yX33LA8Oy9XKoMnGE_KEY_HERE" # Replace with your actual key
+# Configure the Gemini API with the key from config
+try:
+    from config import GEMINI_API_KEY
+    API_KEY = GEMINI_API_KEY
+except ImportError:
+    API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 if not API_KEY:
     print("Error: API key not available.")
@@ -36,9 +34,9 @@ if not API_KEY:
 else:
     try:
         genai.configure(api_key=API_KEY)
-        model_name = 'gemini-2.0-flash'  # Make sure this model name is correct
+        model_name = 'gemini-2.0-flash'  # Updated to latest Gemini 2.0 Flash model
         model = genai.GenerativeModel(model_name)
-        print(f"Gemini model '{model_name}' configured.")  # Updated print statement
+        print(f"Gemini model '{model_name}' configured.")
     except Exception as e:
         print(f"Error configuring Gemini: {e}")
         model = None # Ensure model is None if configuration fails
@@ -62,29 +60,125 @@ def print_header(message, level=1):
         print(f"\n--- {message} ---")
 
 # Selenium WebDriver setup
-def setup_driver():
-    """Sets up the Selenium WebDriver."""
+def setup_driver(browser_type="chrome"):
+    """Sets up the Selenium WebDriver with support for different browsers and environments."""
     try:
-        # Use Edge specific options and service
-        options = EdgeOptions()
-        options.add_argument("--headless")  # Run in background without opening a browser window
-        options.add_argument("--disable-gpu")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--window-size=1920,1080")  # Set a standard window size
-        options.add_argument("--disable-extensions")  # Disable extensions
-        options.add_argument("--disable-notifications")  # Disable notifications
-        options.add_argument("--disable-popup-blocking")  # Disable popup blocking
-        # Use a generic user agent or an Edge-specific one if needed
-        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59") # Example Edge UA
+        # First try Chrome (best for cross-platform compatibility)
+        if browser_type.lower() == "chrome":
+            options = ChromeOptions()
+            options.add_argument("--headless=new")  # Updated headless flag for newer Chrome
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-notifications")
+            options.add_argument("--disable-popup-blocking")
+            
+            # Set user agent
+            options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
 
-        service = EdgeService(EdgeChromiumDriverManager().install())
-        driver = webdriver.Edge(service=service, options=options)
-        print("Edge WebDriver setup successful (running in headless mode).")
-        return driver
+            # Handle the case when running in Streamlit Cloud
+            if "STREAMLIT_SHARING" in os.environ or "STREAMLIT_CLOUD" in os.environ:
+                print("Detected Streamlit Cloud environment. Using special Chrome setup.")
+                # In Streamlit Cloud, we need a different approach
+                options.binary_location = "/usr/bin/google-chrome-stable"
+                service = ChromeService(executable_path="/usr/local/bin/chromedriver")
+                driver = webdriver.Chrome(service=service, options=options)
+            else:
+                # Try to detect Chrome in common locations
+                chrome_paths = [
+                    # Windows paths
+                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                    # Linux paths
+                    "/usr/bin/google-chrome",
+                    "/usr/bin/google-chrome-stable",
+                    # MacOS paths
+                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+                ]
+                
+                for path in chrome_paths:
+                    if os.path.exists(path):
+                        print(f"Found Chrome at: {path}")
+                        options.binary_location = path
+                        break
+                        
+                # Standard local setup using webdriver-manager
+                try:
+                    service = ChromeService(ChromeDriverManager().install())
+                    driver = webdriver.Chrome(service=service, options=options)
+                except Exception as chrome_error:
+                    print(f"Error setting up Chrome with webdriver-manager: {chrome_error}")
+                    # Try direct Chrome setup without service
+                    driver = webdriver.Chrome(options=options)
+            
+            print("Chrome WebDriver setup successful (running in headless mode).")
+            return driver
+            
+        # Edge as fallback (Windows-specific)
+        elif browser_type.lower() == "edge":
+            options = EdgeOptions()
+            options.add_argument("--headless")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-notifications")
+            options.add_argument("--disable-popup-blocking")
+            options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59")
+
+            service = EdgeService(EdgeChromiumDriverManager().install())
+            driver = webdriver.Edge(service=service, options=options)
+            print("Edge WebDriver setup successful (running in headless mode).")
+            return driver
     except Exception as e:
         print(f"Error setting up WebDriver: {e}")
-        return None
+        
+        # If standard setup fails, try a more direct approach for Streamlit
+        try:
+            print("Attempting alternative setup for Streamlit environment...")
+            options = webdriver.ChromeOptions()
+            options.add_argument("--headless=new")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            
+            # Try multiple approaches
+            try:
+                # Try without specifying the service
+                driver = webdriver.Chrome(options=options)
+            except Exception:
+                try:
+                    # Try with the default ChromeDriver
+                    driver = webdriver.Chrome(service=ChromeService(), options=options)
+                except Exception:
+                    # Last resort - rely on PATH
+                    from selenium.webdriver.chrome.service import Service
+                    driver = webdriver.Chrome(service=Service(), options=options)
+                    
+            print("Alternative Chrome WebDriver setup successful.")
+            return driver
+        except Exception as alt_e:
+            print(f"Alternative setup also failed: {alt_e}")
+            
+            # One last attempt with Firefox if available
+            try:
+                print("Attempting Firefox as last resort...")
+                from selenium.webdriver.firefox.options import Options as FirefoxOptions
+                from selenium.webdriver.firefox.service import Service as FirefoxService
+                from webdriver_manager.firefox import GeckoDriverManager
+                
+                firefox_options = FirefoxOptions()
+                firefox_options.add_argument("--headless")
+                firefox_service = FirefoxService(GeckoDriverManager().install())
+                driver = webdriver.Firefox(service=firefox_service, options=firefox_options)
+                print("Firefox WebDriver setup successful.")
+                return driver
+            except Exception as ff_e:
+                print(f"Firefox setup failed: {ff_e}")
+                return None
 
 # --- Form Parsing ---
 def extract_form_structure(driver, form_url):
@@ -110,7 +204,6 @@ def extract_form_structure(driver, form_url):
         if not question_items:
              question_items = soup.select('div[jscontroller][data-params]')
              print(f"Fallback: Found {len(question_items)} potential question items using data-params.")
-
 
         for item in question_items:
             question_text_element = item.select_one('div[role="heading"]')
@@ -273,6 +366,11 @@ def extract_form_structure(driver, form_url):
                             options["labels"] = endpoint_labels
                     
                     aria_label = clean_question
+                else:
+                    input_type = "multiple_choice"
+                    option_elements = item.select('div[role="radio"] span')
+                    options = [opt.get_text(strip=True) for opt in option_elements if opt.get_text(strip=True)]
+                    aria_label = clean_question
 
             elif item.select('div[role="group"]'):
                 if item.select('div[role="checkbox"]'):
@@ -376,20 +474,9 @@ def extract_form_structure(driver, form_url):
         print(f"Error extracting form structure: {e}")
         return None
 
+# Add helper functions for form filling
 def fill_multiple_choice(driver, xpath_base, answer, q_identifier, options=None):
-    """
-    Selects the specified answer for a multiple-choice question.
-    
-    Args:
-        driver: The Selenium WebDriver instance
-        xpath_base: Base XPath to locate the question container
-        answer: The answer text to select
-        q_identifier: The question identifier for logging
-        options: Available options for the question
-        
-    Returns:
-        bool: True if successfully selected, False otherwise
-    """
+    """Helper function to fill multiple choice questions"""
     print(f"  Handling multiple choice for '{q_identifier}' with answer: '{answer}'")
     
     try:
@@ -769,10 +856,97 @@ def fill_form(driver, form_url, form_structure, answers):
         total_time = time.time() - start_time
         print_header(f"Form filling completed in {total_time:.2f} seconds", 2)
 
+def generate_dynamic_persona(target_audience, variation_index):
+    """
+    Generate a dynamic persona based on the target audience description
+    to provide more varied and realistic form responses.
+    """
+    # Extract demographic information from target audience
+    audience_lower = target_audience.lower()
+    
+    # Detect age groups
+    age_groups = {
+        "student": ["18-24", "college student", "university student"],
+        "young professional": ["25-34", "young professional", "recent graduate"],
+        "professional": ["35-44", "mid-career", "experienced professional"],
+        "senior professional": ["45-54", "55-64", "senior", "manager", "executive"],
+        "retired": ["65+", "retired", "senior citizen"]
+    }
+    
+    # Detect potential industries or interests
+    industries = {
+        "technology": ["tech", "IT", "software", "developer", "engineer", "programming"],
+        "healthcare": ["medical", "healthcare", "doctor", "nurse", "patient", "hospital"],
+        "education": ["education", "teacher", "professor", "student", "academic"],
+        "business": ["business", "finance", "marketing", "sales", "entrepreneur"],
+        "creative": ["creative", "design", "artist", "writer", "musician"]
+    }
+    
+    # Detect experience levels
+    experience_levels = {
+        "beginner": ["beginner", "novice", "new", "starting", "learning"],
+        "intermediate": ["intermediate", "familiar", "some experience"],
+        "advanced": ["advanced", "expert", "professional", "experienced"]
+    }
+    
+    # Select demographic attributes
+    detected_age = None
+    for age, keywords in age_groups.items():
+        if any(keyword in audience_lower for keyword in keywords):
+            detected_age = age
+            break
+    
+    detected_industry = None
+    for industry, keywords in industries.items():
+        if any(keyword in audience_lower for keyword in keywords):
+            detected_industry = industry
+            break
+    
+    detected_experience = None
+    for level, keywords in experience_levels.items():
+        if any(keyword in audience_lower for keyword in keywords):
+            detected_experience = level
+            break
+    
+    # Apply variations to create diverse personas
+    variations = [
+        {"perspective": "practical", "trait": "pragmatic", "priority": "efficiency and results"},
+        {"perspective": "analytical", "trait": "detail-oriented", "priority": "accuracy and thoroughness"},
+        {"perspective": "innovative", "trait": "creative", "priority": "new ideas and approaches"},
+        {"perspective": "critical", "trait": "skeptical", "priority": "identifying issues and improvements"},
+        {"perspective": "enthusiastic", "trait": "optimistic", "priority": "positive outcomes and opportunities"},
+        {"perspective": "cautious", "trait": "careful", "priority": "minimizing risks and downsides"}
+    ]
+    
+    variation = variations[variation_index % len(variations)]
+    
+    # Build the persona description
+    persona = {
+        "age_group": detected_age or "adult",
+        "industry": detected_industry or "general",
+        "experience": detected_experience or "varied",
+        "perspective": variation["perspective"],
+        "trait": variation["trait"],
+        "priority": variation["priority"]
+    }
+    
+    # Create a detailed persona description
+    persona_description = f"""
+    PERSONA:
+    - You are a {persona['age_group']} with {persona['experience']} experience in the {persona['industry']} field.
+    - You have a {persona['perspective']} perspective and tend to be {persona['trait']}.
+    - You prioritize {persona['priority']} when evaluating options or providing feedback.
+    - Variation #{variation_index+1}: Your responses should reflect this distinct perspective.
+    
+    When generating answers, stay true to this persona's viewpoint and priorities.
+    """
+    
+    return persona_description
+
 def generate_responses(form_structure, target_audience, variation_index):
     """
     Generates responses for the form using the Gemini API.
-    Adds slight variation based on the variation_index.
+    Adds variation based on the variation_index by creating realistic personas.
     """
     if not model:
         print("Error: Gemini model not configured.")
@@ -781,6 +955,10 @@ def generate_responses(form_structure, target_audience, variation_index):
         print("Error: Cannot generate responses, form structure is empty.")
         return None
 
+    # Generate a dynamic persona based on target audience
+    persona = generate_dynamic_persona(target_audience, variation_index)
+    
+    # Standard variations to maintain compatibility with existing code
     variations = [
         "Focus on practical aspects.",
         "Emphasize cost-consciousness.",
@@ -789,13 +967,14 @@ def generate_responses(form_structure, target_audience, variation_index):
         "Consider the perspective of a newcomer to the topic.",
         "Consider the perspective of an experienced user.",
     ]
-    persona_variation = f"Persona Variation {variation_index+1}: {variations[variation_index % len(variations)]}"
+    base_variation = f"Persona Variation {variation_index+1}: {variations[variation_index % len(variations)]}"
 
     prompt = f"""
     You are an AI assistant tasked with filling out a Google Form.
     Your target audience is: {target_audience}.
-    {persona_variation}
-
+    
+    {persona}
+    
     Here is the EXACT structure of the form with the EXACT field identifiers that must be used:
     {json.dumps(form_structure, indent=2)}
 
@@ -812,7 +991,7 @@ def generate_responses(form_structure, target_audience, variation_index):
     Please provide answers in JSON format where the key is the 'identifier' from the form structure.
 
     Guidelines for answers:
-    - For "text" type: Provide a relevant string answer
+    - For "text" type: Provide a relevant string answer that matches your persona's perspective
     - For "multiple_choice": Choose EXACTLY ONE option from the available options list
     - For "checkbox": Choose from the available options list only (1-3 options)
     - For "dropdown": Choose EXACTLY ONE option from the available list
@@ -829,7 +1008,7 @@ def generate_responses(form_structure, target_audience, variation_index):
 
     print(f"\n--- Generating Response {variation_index + 1} ---")
     print(f"Target Audience: {target_audience}")
-    print(f"Persona Variation: {persona_variation}")
+    print(f"Using Dynamic Persona:\n{persona}")
 
     try:
         response = model.generate_content(prompt)
@@ -898,9 +1077,9 @@ def generate_responses(form_structure, target_audience, variation_index):
     except Exception as e:
         print(f"Error generating responses from Gemini: {e}")
         if "API key not valid" in str(e):
-            print("Please ensure your GOOGLE_API_KEY is correct and valid.")
+            print("Please ensure your API key is correct and valid.")
         try:
-            if response and response.prompt_feedback:
+            if response and hasattr(response, 'prompt_feedback'):
                  print(f"Prompt Feedback: {response.prompt_feedback}")
         except Exception:
              pass
@@ -927,7 +1106,12 @@ def main():
         print("Exiting due to missing API key or Gemini model configuration error.")
         return
 
-    driver = setup_driver()
+    # Try Chrome first, fall back to Edge if needed
+    driver = setup_driver("chrome")
+    if not driver:
+        print("Chrome WebDriver setup failed, trying Edge...")
+        driver = setup_driver("edge")
+        
     if not driver:
         print("Exiting due to WebDriver setup failure.")
         return
